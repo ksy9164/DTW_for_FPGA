@@ -83,8 +83,13 @@ module mkHwMain#(PcieUserIfc pcie)
     rule past_value_init(!past_init_done);
         past_cnt <= past_cnt + 1;
 
-        past_xQ.enq(0);
-        past_yQ.enq(0);
+        if (past_cnt == 0) begin
+            past_xQ.enq(0);
+            past_yQ.enq(0);
+        end else begin
+            past_xQ.enq(32767);
+            past_yQ.enq(32767);
+        end
 
         if (past_cnt == fromInteger(valueof(Window_Size)) - 1) begin
             past_init_done <= True;
@@ -161,7 +166,6 @@ module mkHwMain#(PcieUserIfc pcie)
         y_inQ.deq;
         past_xQ.deq;
         past_yQ.deq;
-        $display("x in is %d y in is %d ",x_inQ.first, y_inQ.first);
         dtw.put_d(tuple4(x_inQ.first, y_inQ.first, past_xQ.first, past_yQ.first));
     endrule
 
@@ -169,7 +173,7 @@ module mkHwMain#(PcieUserIfc pcie)
         Tuple2#(Output_t, Output_t) d <- dtw.get;
         past_xQ.enq(tpl_1(d));
         past_yQ.enq(tpl_2(d));
-        $display("res is %d cnt is %d ",tpl_1(d),output_cnt);
+        $display("%d th x res is %d y res is %d ",output_cnt,tpl_1(d), tpl_2(d));
         output_cnt <= output_cnt + 1;
     endrule
 endmodule

@@ -197,7 +197,7 @@ module mkDTW (DTWIfc);
         Output_t res = 0;
 
         if (y_past[0] > y_past[1]) begin
-            if (y_val > y_static_val) begin
+            if (y_val > x_static_val) begin
                 res = y_past[1] + zeroExtend(y_val - x_static_val);
             end else begin
                 res = y_past[1] + zeroExtend(x_static_val - y_val);
