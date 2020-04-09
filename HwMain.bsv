@@ -26,26 +26,39 @@ module mkHwMain#(PcieUserIfc pcie)
     FIFO#(Input_t) x_saveQ <- mkSizedBRAMFIFO(valueof(Window_Size) + 5);
     FIFO#(Input_t) y_saveQ <- mkSizedBRAMFIFO(valueof(Window_Size) + 5);
 
-    // FIFO for calculated value
-    FIFO#(Output_t) past_xQ <- mkSizedBRAMFIFO(valueof(Window_Size) + 5);
-    FIFO#(Output_t) past_yQ <- mkSizedBRAMFIFO(valueof(Window_Size) + 5);
+    // DTW Init data Q
+    FIFO#(Input_t) dtw_x_initQ <- mkFIFO;
+    FIFO#(Input_t) dtw_y_initQ <- mkFIFO;
 
     // Input
     FIFO#(Input_t) x_inQ <- mkFIFO;
     FIFO#(Input_t) y_inQ <- mkFIFO;
+    Vector#(Module_num, FIFO#(Input_t)) module_xQ <- replicateM(mkFIFO);
+    Vector#(Module_num, FIFO#(Input_t)) module_yQ <- replicateM(mkFIFO);
+    Vector#(Module_num, FIFO#(Output_t)) resultQ <- replicateM(mkFIFO);
+    Reg#(Bit#(3)) input_handle <- mkReg(1);
+
 
     FIFO#(Output_t) outputQ <- mkFIFO;
+    // For DTW first module
+    FIFO#(Tuple4#(Input_t, Input_t, Output_t, Output_t)) first_mQ <- mkSizedBRAMFIFO(valueof(Window_Size) + 5 );
 
-    DTWIfc dtw <- mkDTW;
+
+    Vector#(Module_num,DTWIfc) dtw <- replicateM(mkDTW);
+    /* DTWIfc dtw <- mkDTW; */
 
     Reg#(Bit#(16)) x_cnt <- mkReg(0);
     Reg#(Bit#(16)) y_cnt <- mkReg(0);
-    Reg#(Bit#(16)) past_cnt <- mkReg(0);
-    Reg#(Bit#(16)) output_cnt <- mkReg(0);
+    Reg#(Bit#(16)) dtw_init_cnt <- mkReg(0);
+
+    Vector#(Module_num, Reg#(Bit#(16))) window_cnt <- replicateM(mkReg(0));
+    Reg#(Bit#(16)) total_cnt <- mkReg(1);
 
     Reg#(Bool) x_init_done <- mkReg(False);
     Reg#(Bool) y_init_done <- mkReg(False);
-    Reg#(Bool) past_init_done <- mkReg(False);
+    Reg#(Bool) dtw_init_done <- mkReg(False);
+    Reg#(Bool) x_in_finish <- mkReg(False);
+    Reg#(Bool) y_in_finish <- mkReg(False);
 
     rule sendToHost;
         let r <- pcie.dataReq;
@@ -67,7 +80,7 @@ module mkHwMain#(PcieUserIfc pcie)
         let w <- pcie.dataReceive;
         let a = w.addr;
         let d = w.data;
-        
+
         // PCIe IO is done at 4 byte granularities
         // lower 2 bits are always zero
         let off = (a>>2);
@@ -80,100 +93,178 @@ module mkHwMain#(PcieUserIfc pcie)
         end
     endrule
 
-    rule past_value_init(!past_init_done);
-        past_cnt <= past_cnt + 1;
-
-        if (past_cnt == 0) begin
-            past_xQ.enq(0);
-            past_yQ.enq(0);
-        end else begin
-            past_xQ.enq(32767);
-            past_yQ.enq(32767);
-        end
-
-        if (past_cnt == fromInteger(valueof(Window_Size)) - 1) begin
-            past_init_done <= True;
-        end
-    endrule
-
     rule x_value_init(!x_init_done);
         Bit#(Input_Size) d <- serial_X.get;
-        x_saveQ.enq(unpack(d));
+        dtw_x_initQ.enq(unpack(d));
 
-        if (x_cnt == fromInteger(valueof(Window_Size)) - 2) begin
+        if (x_cnt == fromInteger(valueof(Window_Size)) - 1) begin
             x_init_done <= True;
-            x_cnt <= 0;
-        end else begin
-            x_cnt <= x_cnt + 1;
         end
+        x_cnt <= x_cnt + 1;
     endrule
 
     rule y_value_init(!y_init_done);
         Bit#(Input_Size) d <- serial_Y.get;
-        y_saveQ.enq(unpack(d));
+        dtw_y_initQ.enq(unpack(d));
 
-        if (y_cnt == fromInteger(valueof(Window_Size)) - 2) begin
+        if (y_cnt == fromInteger(valueof(Window_Size)) - 1) begin
             y_init_done <= True;
-            y_cnt <= 0;
-        end else begin
-            y_cnt <= y_cnt + 1;
         end
+        y_cnt <= y_cnt + 1;
     endrule
 
     rule x_value_control(x_init_done);
-        x_saveQ.deq;
-        Input_t d = x_saveQ.first;
-
-        if (x_cnt == 0) begin
-            Bit#(Input_Size) t <- serial_X.get;
-            Input_t new_x = unpack(t);
-            x_saveQ.enq(new_x);
-            x_cnt <= x_cnt + 1;
-        end else if (x_cnt == fromInteger(valueof(Window_Size)) - 1) begin
-            x_saveQ.enq(d);
-            x_cnt <= 0;
+        Bit#(Input_Size) d = 0;
+        if (x_cnt < fromInteger(valueof(Width))) begin
+            d <- serial_X.get;
         end else begin
-            x_saveQ.enq(d);
-            x_cnt <= x_cnt + 1;
+            d = 0;
         end
 
-        x_inQ.enq(d);
+        if (x_cnt >= fromInteger(valueof(Width) + valueof(Window_Size))) begin
+            x_init_done <= False;
+            x_cnt <= 0;
+        end else begin
+            x_cnt <= x_cnt + 1;
+        end
+        x_inQ.enq(unpack(d));
     endrule
 
     rule y_value_control(y_init_done);
-        y_saveQ.deq;
-        Input_t d = y_saveQ.first;
-
-        if (y_cnt == 0) begin
-            Bit#(Input_Size) t <- serial_Y.get;
-            Input_t new_y = unpack(t);
-            y_saveQ.enq(new_y);
-            y_cnt <= y_cnt + 1;
-        end else if (y_cnt == fromInteger(valueof(Window_Size)) - 1) begin
-            y_saveQ.enq(d);
-            y_cnt <= 0;
+        Bit#(Input_Size) d = 0;
+        if (y_cnt < fromInteger(valueof(Width))) begin
+            d <- serial_Y.get;
         end else begin
-            y_saveQ.enq(d);
-            y_cnt <= y_cnt + 1;
+            d = 0;
         end
 
-        y_inQ.enq(d);
+        if (y_cnt >= fromInteger(valueof(Width) + valueof(Window_Size))) begin
+            y_init_done <= False;
+            y_cnt <= 0;
+        end else begin
+            y_cnt <= y_cnt + 1;
+        end
+        y_inQ.enq(unpack(d));
     endrule
 
-
-    rule calculate;
+    rule spread_to_module_x;
+        Bit#(3) i = input_handle % fromInteger(valueof(Module_num));
         x_inQ.deq;
         y_inQ.deq;
-        past_xQ.deq;
-        past_yQ.deq;
-        dtw.put_d(tuple4(x_inQ.first, y_inQ.first, past_xQ.first, past_yQ.first));
+
+        module_xQ[i].enq(x_inQ.first);
+        module_yQ[i].enq(y_inQ.first);
+
+        input_handle <= input_handle + 1;
     endrule
 
-    rule get_d(past_init_done);
-        Tuple2#(Output_t, Output_t) d <- dtw.get;
-        past_xQ.enq(tpl_1(d));
-        past_yQ.enq(tpl_2(d));
-        $display("%d th x res is %d y res is %d ",output_cnt,tpl_1(d), tpl_2(d));
-        output_cnt <= output_cnt + 1;
+    // dtw first module init
+    rule dtw_first_init(!dtw_init_done);
+        dtw_x_initQ.deq;
+        dtw_y_initQ.deq;
+
+        if (dtw_init_cnt == fromInteger(valueof(Window_Size)) - 1) begin
+            $display("dtw init done !");
+            dtw_init_cnt <= 0;
+            dtw_init_done <= True;
+        end else begin
+            dtw_init_cnt <= dtw_init_cnt + 1;
+        end
+
+        if (dtw_init_cnt == 0) begin
+            first_mQ.enq(tuple4(dtw_x_initQ.first, dtw_y_initQ.first, 0, 0));
+        end else begin
+            first_mQ.enq(tuple4(dtw_x_initQ.first, dtw_y_initQ.first, 32767, 32767));
+        end
+    endrule
+
+    rule first_dtw_module_input;
+        first_mQ.deq;
+        let d = first_mQ.first;
+        dtw[0].put_d(d);
+    endrule
+
+    rule calculate_first_m(dtw_init_done);
+        Tuple2#(Output_t, Output_t) d <- dtw[valueof(Module_num) - 1].get;
+        Bit#(16) i = 0;
+        Input_t x = 0;
+        Input_t y = 0;
+        if (window_cnt[i] == fromInteger(valueof(Window_Size)) - 1) begin
+            module_xQ[i].deq;
+            module_yQ[i].deq;
+            x = module_xQ[i].first;
+            y = module_yQ[i].first;
+            window_cnt[i] <= 0;
+        end else begin
+            x <- dtw[valueof(Module_num) - 1].get_x;
+            y <- dtw[valueof(Module_num) - 1].get_y;
+            window_cnt[i] <= window_cnt[i] + 1;
+        end
+        if (window_cnt[i] == 0) begin
+            resultQ[i].enq(tpl_1(d));
+        end
+        first_mQ.enq(tuple4(x, y, tpl_1(d), tpl_2(d)));
+        $display("id = %d  th x res is %d y res is %d ", i,  tpl_1(d), tpl_2(d));
+    endrule
+
+    for (Bit#(16) i = 1; i < fromInteger(valueof(Module_num)) - 1; i = i + 1) begin
+
+        rule calculate(i != fromInteger(valueof(Module_num)) - 1);
+            Tuple2#(Output_t, Output_t) d <- dtw[i - 1].get;
+            Input_t x = 0;
+            Input_t y = 0;
+            if (window_cnt[i] == fromInteger(valueof(Window_Size)) - 1) begin
+                module_xQ[i].deq;
+                module_yQ[i].deq;
+                x = module_xQ[i].first;
+                y = module_yQ[i].first;
+                window_cnt[i] <= 0;
+            end else begin
+                x <- dtw[i - 1].get_x;
+                y <- dtw[i - 1].get_y;
+                window_cnt[i] <= window_cnt[i] + 1;
+            end
+            dtw[i].put_d(tuple4(x, y, tpl_1(d), tpl_2(d)));
+            if (window_cnt[i] == 0) begin
+                resultQ[i].enq(tpl_1(d));
+            end
+            $display("id = %d  th x res is %d y res is %d ", i,  tpl_1(d), tpl_2(d));
+        endrule
+
+    end
+
+    rule calculate_last_m(dtw_init_done);
+        Bit#(16) i = fromInteger(valueof(Module_num)) - 1;
+        Tuple2#(Output_t, Output_t) d <- dtw[i - 1].get;
+        Input_t x = 0;
+        Input_t y = 0;
+        if (window_cnt[i] == fromInteger(valueof(Window_Size)) - 1) begin
+            module_xQ[i].deq;
+            module_yQ[i].deq;
+            x = module_xQ[i].first;
+            y = module_yQ[i].first;
+            window_cnt[i] <= 0;
+        end else begin
+            x <- dtw[i - 1].get_x;
+            y <- dtw[i - 1].get_y;
+            window_cnt[i] <= window_cnt[i] + 1;
+        end
+        if (window_cnt[i] == 0) begin
+            resultQ[i].enq(tpl_1(d));
+        end
+        $display("id = %d and  th x res is %d y res is %d ", i,  tpl_1(d), tpl_2(d));
+        dtw[i].put_d(tuple4(x, y, tpl_1(d), tpl_2(d)));
+    endrule
+
+    rule get_result;
+        Bit#(16) i = total_cnt % fromInteger(valueof(Module_num));
+        resultQ[i].deq;
+        if (total_cnt == fromInteger(valueof(Width)) - 1) begin
+            total_cnt <= 0;
+            outputQ.enq(resultQ[i].first);
+        end else begin
+            total_cnt <= total_cnt + 1;
+        end
+        $display("result is %d th and %d ",total_cnt, resultQ[i].first);
     endrule
 endmodule

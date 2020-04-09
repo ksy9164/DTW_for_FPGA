@@ -10,6 +10,8 @@ import BRAMFIFO::*;
 interface DTWIfc;
     method Action put_d(Tuple4#(Input_t, Input_t, Output_t, Output_t) d);
     method ActionValue#(Tuple2#(Output_t, Output_t)) get;
+    method ActionValue#(Input_t) get_x;
+    method ActionValue#(Input_t) get_y;
 endinterface
 
 function Output_t min(Vector#(3,Output_t) past);
@@ -26,6 +28,8 @@ endfunction
 module mkDTW (DTWIfc);
     FIFO#(Tuple4#(Input_t, Input_t, Output_t, Output_t)) inQ <- mkFIFO;
     FIFO#(Tuple2#(Output_t, Output_t)) outputQ <- mkFIFO;
+    FIFO#(Input_t) output_xQ <- mkFIFO;
+    FIFO#(Input_t) output_yQ <- mkFIFO;
 
     Reg#(Bit#(2)) stage <- mkReg(0);
     Reg#(Bool) init_done <- mkReg(False);
@@ -140,6 +144,7 @@ module mkDTW (DTWIfc);
         x_past[1] <= past[2];
         x_resQ.enq(res);
         x_stage <= x_stage + 1;
+        output_xQ.enq(x_val);
     endrule
 
     rule cal_last_x_data(x_init_done && x_stage == fromInteger(valueof(Window_Size)));
@@ -165,6 +170,7 @@ module mkDTW (DTWIfc);
         x_stage <= 2;
         x_init_done <= False;
         x_resQ.enq(res);
+        output_xQ.enq(x_val);
     endrule
 
     rule cal_y_data(y_init_done && y_stage < fromInteger(valueof(Window_Size)));
@@ -187,6 +193,7 @@ module mkDTW (DTWIfc);
         y_past[0] <= res;
         y_past[1] <= past[2];
         y_resQ.enq(res);
+        output_yQ.enq(y_val);
         y_stage <= y_stage + 1;
     endrule
 
@@ -212,6 +219,7 @@ module mkDTW (DTWIfc);
 
         y_stage <= 2;
         y_init_done <= False;
+        output_yQ.enq(y_val);
         y_resQ.enq(res);
     endrule
 
@@ -228,6 +236,14 @@ module mkDTW (DTWIfc);
     method ActionValue#(Tuple2#(Output_t, Output_t)) get;
         outputQ.deq;
         return outputQ.first;
+    endmethod
+    method ActionValue#(Input_t) get_x;
+        output_xQ.deq;
+        return output_xQ.first;
+    endmethod
+    method ActionValue#(Input_t) get_y;
+        output_yQ.deq;
+        return output_yQ.first;
     endmethod
 endmodule
 
