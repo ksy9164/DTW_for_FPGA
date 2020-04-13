@@ -45,8 +45,9 @@ module mkDTW (DTWIfc);
     Reg#(Input_t) x_static_val <- mkReg(0);
     Reg#(Input_t) y_static_val <- mkReg(0);
 
-    FIFO#(Input_t) xQ <- mkFIFO;
-    FIFO#(Input_t) yQ <- mkFIFO;
+    FIFO#(Input_t) xQ <- mkSizedFIFO(5);
+    FIFO#(Input_t) yQ <- mkSizedFIFO(5);
+
     FIFO#(Output_t) x_pastQ <- mkFIFO;
     FIFO#(Output_t) y_pastQ <- mkFIFO;
 

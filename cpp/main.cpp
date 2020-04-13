@@ -7,10 +7,12 @@
 #include "dmasplitter.h"
 
 /* #define SIZE  146000 */
-#define SIZE  1460
-/* #define SIZE  10 */
+#define SIZE  2000
+/* #define SIZE  12 */
 #define X_FILE "./acsf1_data/x_data.txt"
 #define Y_FILE "./acsf1_data/y_data.txt"
+/* #define X_FILE "./simple_d/x_data.txt"
+ * #define Y_FILE "./simple_d/y_data.txt" */
 
 static const uint32_t x_Size = SIZE;
 static const uint32_t y_Size = SIZE;
@@ -46,8 +48,8 @@ int main(int argc, char** argv) {
         pcie->userWriteWord(0, x_data[i]);
         pcie->userWriteWord(4, y_data[i]);
     }
-
     uint32_t ans = pcie->userReadWord(0);
+    sleep(1);
     printf("\nAnswer is %d ", ans);
 
     return 0;

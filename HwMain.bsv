@@ -9,6 +9,7 @@ import BRAMFIFO::*;
 import PcieCtrl::*;
 import DMASplitter::*;
 import Serializer::*;
+import DividedFIFO::*;
 
 import define::*;
 import DTW::*;
@@ -22,10 +23,6 @@ module mkHwMain#(PcieUserIfc pcie)
     SerializerIfc#(32, DivSize) serial_X <- mkSerializer;
     SerializerIfc#(32, DivSize) serial_Y <- mkSerializer;
 
-    // FIFO for controlling X, Y data
-    FIFO#(Input_t) x_saveQ <- mkSizedBRAMFIFO(valueof(Window_Size) + 5);
-    FIFO#(Input_t) y_saveQ <- mkSizedBRAMFIFO(valueof(Window_Size) + 5);
-
     // DTW Init data Q
     FIFO#(Input_t) dtw_x_initQ <- mkFIFO;
     FIFO#(Input_t) dtw_y_initQ <- mkFIFO;
@@ -36,12 +33,12 @@ module mkHwMain#(PcieUserIfc pcie)
     Vector#(Module_num, FIFO#(Input_t)) module_xQ <- replicateM(mkFIFO);
     Vector#(Module_num, FIFO#(Input_t)) module_yQ <- replicateM(mkFIFO);
     Vector#(Module_num, FIFO#(Output_t)) resultQ <- replicateM(mkFIFO);
-    Reg#(Bit#(3)) input_handle <- mkReg(1);
+    Reg#(Bit#(5)) input_handle <- mkReg(1);
 
 
     FIFO#(Output_t) outputQ <- mkFIFO;
     // For DTW first module
-    FIFO#(Tuple4#(Input_t, Input_t, Output_t, Output_t)) first_mQ <- mkSizedBRAMFIFO(valueof(Window_Size) + 5 );
+    DividedBRAMFIFOIfc#(Tuple4#(Input_t, Input_t, Output_t, Output_t), Window_Size, 10) first_mQ <- mkDividedBRAMFIFO;
 
 
     Vector#(Module_num,DTWIfc) dtw <- replicateM(mkDTW);
@@ -52,6 +49,7 @@ module mkHwMain#(PcieUserIfc pcie)
     Reg#(Bit#(16)) dtw_init_cnt <- mkReg(0);
 
     Vector#(Module_num, Reg#(Bit#(16))) window_cnt <- replicateM(mkReg(0));
+
     Reg#(Bit#(16)) total_cnt <- mkReg(1);
 
     Reg#(Bool) x_init_done <- mkReg(False);
@@ -86,6 +84,7 @@ module mkHwMain#(PcieUserIfc pcie)
         let off = (a>>2);
         if ( off == 0 ) begin
             serial_X.put(d);
+            /* loo <= 1; */
         end else if ( off == 1 ) begin
             serial_Y.put(d);
         end else begin
@@ -148,14 +147,18 @@ module mkHwMain#(PcieUserIfc pcie)
     endrule
 
     rule spread_to_module_x;
-        Bit#(3) i = input_handle % fromInteger(valueof(Module_num));
+        Bit#(5) i = input_handle % fromInteger(valueof(Module_num));
         x_inQ.deq;
         y_inQ.deq;
 
         module_xQ[i].enq(x_inQ.first);
         module_yQ[i].enq(y_inQ.first);
 
-        input_handle <= input_handle + 1;
+        if (input_handle == fromInteger(valueof(Module_num)) - 1) begin
+            input_handle <= 0;
+        end else begin
+            input_handle <= input_handle + 1;
+        end
     endrule
 
     // dtw first module init
@@ -164,7 +167,6 @@ module mkHwMain#(PcieUserIfc pcie)
         dtw_y_initQ.deq;
 
         if (dtw_init_cnt == fromInteger(valueof(Window_Size)) - 1) begin
-            $display("dtw init done !");
             dtw_init_cnt <= 0;
             dtw_init_done <= True;
         end else begin
@@ -204,7 +206,7 @@ module mkHwMain#(PcieUserIfc pcie)
             resultQ[i].enq(tpl_1(d));
         end
         first_mQ.enq(tuple4(x, y, tpl_1(d), tpl_2(d)));
-        $display("id = %d  th x res is %d y res is %d ", i,  tpl_1(d), tpl_2(d));
+        /* $display("id = %d  th x res is %d y res is %d ", i,  tpl_1(d), tpl_2(d)); */
     endrule
 
     for (Bit#(16) i = 1; i < fromInteger(valueof(Module_num)) - 1; i = i + 1) begin
@@ -228,7 +230,7 @@ module mkHwMain#(PcieUserIfc pcie)
             if (window_cnt[i] == 0) begin
                 resultQ[i].enq(tpl_1(d));
             end
-            $display("id = %d  th x res is %d y res is %d ", i,  tpl_1(d), tpl_2(d));
+            /* $display("id = %d  th x res is %d y res is %d ", i,  tpl_1(d), tpl_2(d)); */
         endrule
 
     end
@@ -252,7 +254,7 @@ module mkHwMain#(PcieUserIfc pcie)
         if (window_cnt[i] == 0) begin
             resultQ[i].enq(tpl_1(d));
         end
-        $display("id = %d and  th x res is %d y res is %d ", i,  tpl_1(d), tpl_2(d));
+        /* $display("id = %d and  th x res is %d y res is %d ", i,  tpl_1(d), tpl_2(d)); */
         dtw[i].put_d(tuple4(x, y, tpl_1(d), tpl_2(d)));
     endrule
 
@@ -265,6 +267,6 @@ module mkHwMain#(PcieUserIfc pcie)
         end else begin
             total_cnt <= total_cnt + 1;
         end
-        $display("result is %d th and %d ",total_cnt, resultQ[i].first);
+        $display("cnt result is %d th and %d ",total_cnt, resultQ[i].first);
     endrule
 endmodule
