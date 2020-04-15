@@ -38,7 +38,7 @@ module mkHwMain#(PcieUserIfc pcie)
 
     FIFO#(Output_t) outputQ <- mkFIFO;
     // For DTW first module
-    DividedBRAMFIFOIfc#(Tuple4#(Input_t, Input_t, Output_t, Output_t), Window_Size, 10) first_mQ <- mkDividedBRAMFIFO;
+    DividedBRAMFIFOIfc#(Tuple4#(Input_t, Input_t, Output_t, Output_t), Window_Size, 20) first_mQ <- mkDividedBRAMFIFO;
 
 
     Vector#(Module_num,DTWIfc) dtw <- replicateM(mkDTW);

@@ -39,6 +39,8 @@ module mkDTW (DTWIfc);
     Reg#(Bit#(16)) x_stage <- mkReg(2);
     Reg#(Bit#(16)) y_stage <- mkReg(2);
 
+    Reg#(Bit#(16)) input_cnt <- mkReg(0);
+
     Vector#(2, Reg#(Output_t)) y_past <- replicateM(mkReg(0));
     Vector#(2, Reg#(Output_t)) x_past <- replicateM(mkReg(0));
 
@@ -61,7 +63,15 @@ module mkDTW (DTWIfc);
         Input_t y = tpl_2(inQ.first);
         Output_t past_x = tpl_3(inQ.first);
         Output_t past_y = tpl_4(inQ.first);
-
+        if (input_cnt != 0) begin
+            output_xQ.enq(x);
+            output_yQ.enq(y);
+        end
+        if (input_cnt == fromInteger(valueof(Window_Size))) begin
+            input_cnt <= 0;
+        end else begin
+            input_cnt <= input_cnt + 1;
+        end
         xQ.enq(x);
         yQ.enq(y);
         x_pastQ.enq(past_x);
@@ -145,7 +155,7 @@ module mkDTW (DTWIfc);
         x_past[1] <= past[2];
         x_resQ.enq(res);
         x_stage <= x_stage + 1;
-        output_xQ.enq(x_val);
+        /* output_xQ.enq(x_val); */
     endrule
 
     rule cal_last_x_data(x_init_done && x_stage == fromInteger(valueof(Window_Size)));
@@ -171,7 +181,7 @@ module mkDTW (DTWIfc);
         x_stage <= 2;
         x_init_done <= False;
         x_resQ.enq(res);
-        output_xQ.enq(x_val);
+        /* output_xQ.enq(x_val); */
     endrule
 
     rule cal_y_data(y_init_done && y_stage < fromInteger(valueof(Window_Size)));
@@ -194,7 +204,7 @@ module mkDTW (DTWIfc);
         y_past[0] <= res;
         y_past[1] <= past[2];
         y_resQ.enq(res);
-        output_yQ.enq(y_val);
+        /* output_yQ.enq(y_val); */
         y_stage <= y_stage + 1;
     endrule
 
@@ -220,7 +230,7 @@ module mkDTW (DTWIfc);
 
         y_stage <= 2;
         y_init_done <= False;
-        output_yQ.enq(y_val);
+        /* output_yQ.enq(y_val); */
         y_resQ.enq(res);
     endrule
 
