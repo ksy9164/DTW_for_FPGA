@@ -27,6 +27,7 @@ endfunction
 (* synthesize *)
 module mkDTW (DTWIfc);
     FIFO#(Tuple4#(Input_t, Input_t, Output_t, Output_t)) inQ <- mkFIFO;
+    FIFO#(Tuple4#(Input_t, Input_t, Output_t, Output_t)) inputQ <- mkFIFO;
     FIFO#(Tuple2#(Output_t, Output_t)) outputQ <- mkFIFO;
     FIFO#(Input_t) output_xQ <- mkFIFO;
     FIFO#(Input_t) output_yQ <- mkFIFO;
@@ -56,6 +57,11 @@ module mkDTW (DTWIfc);
     FIFO#(Output_t) resQ <- mkFIFO;
     FIFO#(Output_t) x_resQ <- mkFIFO;
     FIFO#(Output_t) y_resQ <- mkFIFO;
+
+    rule input_to_in;
+        inputQ.deq;
+        inQ.enq(inputQ.first);
+    endrule
 
     rule get_intput;
         inQ.deq;
@@ -155,7 +161,6 @@ module mkDTW (DTWIfc);
         x_past[1] <= past[2];
         x_resQ.enq(res);
         x_stage <= x_stage + 1;
-        /* output_xQ.enq(x_val); */
     endrule
 
     rule cal_last_x_data(x_init_done && x_stage == fromInteger(valueof(Window_Size)));
@@ -181,7 +186,6 @@ module mkDTW (DTWIfc);
         x_stage <= 2;
         x_init_done <= False;
         x_resQ.enq(res);
-        /* output_xQ.enq(x_val); */
     endrule
 
     rule cal_y_data(y_init_done && y_stage < fromInteger(valueof(Window_Size)));
@@ -230,7 +234,6 @@ module mkDTW (DTWIfc);
 
         y_stage <= 2;
         y_init_done <= False;
-        /* output_yQ.enq(y_val); */
         y_resQ.enq(res);
     endrule
 
@@ -242,7 +245,7 @@ module mkDTW (DTWIfc);
     endrule
 
     method Action put_d(Tuple4#(Input_t, Input_t, Output_t, Output_t) d);
-        inQ.enq(d);
+        inputQ.enq(d);
     endmethod 
     method ActionValue#(Tuple2#(Output_t, Output_t)) get;
         outputQ.deq;
