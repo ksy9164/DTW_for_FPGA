@@ -67,7 +67,7 @@ module mkDTW (DTWIfc);
             output_xQ.enq(x);
             output_yQ.enq(y);
         end
-        if (input_cnt == fromInteger(valueof(Window_Size))) begin
+        if (input_cnt == fromInteger(valueof(Window_Size)) - 1) begin
             input_cnt <= 0;
         end else begin
             input_cnt <= input_cnt + 1;
