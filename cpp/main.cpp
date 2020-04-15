@@ -2,13 +2,16 @@
 #include <unistd.h>
 #include <time.h>
 #include <unistd.h>
-
+#include <iostream>
 #include "bdbmpcie.h"
 #include "dmasplitter.h"
 
 /* #define SIZE  146000 */
 #define SIZE  2000
 /* #define SIZE  12 */
+
+#define ITER 1000000
+
 #define X_FILE "./acsf1_data/x_data.txt"
 #define Y_FILE "./acsf1_data/y_data.txt"
 /* #define X_FILE "./simple_d/x_data.txt"
@@ -24,6 +27,8 @@ union Container {
     uint8_t arr[4];
     uint32_t unioned;
 };
+
+using namespace std;
 
 int main(int argc, char** argv) {
     FILE * x_data_fp = fopen(X_FILE, "r");
@@ -44,14 +49,25 @@ int main(int argc, char** argv) {
     int x_cnt = 0;
     int y_cnt = 0;
 
-    for (i = 0; i < SIZE / 4; ++i) {
-        pcie->userWriteWord(0, x_data[i]);
-        pcie->userWriteWord(4, y_data[i]);
-    }
-    uint32_t ans = pcie->userReadWord(0);
-    sleep(1);
-    printf("\nAnswer is %d ", ans);
+    time_t st,end;
+    st = time(NULL);
 
+    for (i = 0; i < ITER; ++i) {
+        printf(" %d th is start \n",i);
+        for (j = 0; j < SIZE / 4; ++j) {
+            pcie->userWriteWord(0, x_data[j]);
+            pcie->userWriteWord(4, y_data[j]);
+        }
+    }
+
+    end = time(NULL);
+    sleep(1);
+
+    double result = (double)(end - st);
+    printf("%3f sec \n",result);
+
+    uint32_t ans = pcie->userReadWord(0);
+    printf("\nAnswer is %d ", ans);
     return 0;
 }
 

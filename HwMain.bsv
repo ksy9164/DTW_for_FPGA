@@ -108,41 +108,20 @@ module mkHwMain#(PcieUserIfc pcie)
 
         if (y_cnt == fromInteger(valueof(Window_Size)) - 1) begin
             y_init_done <= True;
+            outputQ.enq(0);
         end
         y_cnt <= y_cnt + 1;
     endrule
 
     rule x_value_control(x_init_done);
         Bit#(Input_Size) d = 0;
-        if (x_cnt < fromInteger(valueof(Width))) begin
-            d <- serial_X.get;
-        end else begin
-            d = 0;
-        end
-
-        if (x_cnt >= fromInteger(valueof(Width) + valueof(Window_Size))) begin
-            x_init_done <= False;
-            x_cnt <= 0;
-        end else begin
-            x_cnt <= x_cnt + 1;
-        end
+        d <- serial_X.get;
         x_inQ.enq(unpack(d));
     endrule
 
     rule y_value_control(y_init_done);
         Bit#(Input_Size) d = 0;
-        if (y_cnt < fromInteger(valueof(Width))) begin
-            d <- serial_Y.get;
-        end else begin
-            d = 0;
-        end
-
-        if (y_cnt >= fromInteger(valueof(Width) + valueof(Window_Size))) begin
-            y_init_done <= False;
-            y_cnt <= 0;
-        end else begin
-            y_cnt <= y_cnt + 1;
-        end
+        d <- serial_Y.get;
         y_inQ.enq(unpack(d));
     endrule
 
@@ -261,12 +240,7 @@ module mkHwMain#(PcieUserIfc pcie)
     rule get_result;
         Bit#(16) i = total_cnt % fromInteger(valueof(Module_num));
         resultQ[i].deq;
-        if (total_cnt == fromInteger(valueof(Width)) - 1) begin
-            total_cnt <= 0;
-            outputQ.enq(resultQ[i].first);
-        end else begin
-            total_cnt <= total_cnt + 1;
-        end
+        total_cnt <= total_cnt + 1;
         $display("cnt result is %d th and %d ",total_cnt, resultQ[i].first);
     endrule
 endmodule
